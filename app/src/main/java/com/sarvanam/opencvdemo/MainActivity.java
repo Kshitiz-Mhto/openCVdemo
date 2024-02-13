@@ -3,21 +3,31 @@ package com.sarvanam.opencvdemo;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 
-import android.content.Intent;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.Camera;
 import android.os.Bundle;
 import android.Manifest;
 import android.view.SurfaceView;
 import android.view.WindowManager;
 import android.widget.Toast;
-
 import com.sarvanam.opencvdemo.databinding.ActivityMainBinding;
 
 import org.opencv.android.CameraActivity;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfRect;
+import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
+import org.opencv.imgproc.Imgproc;
+import org.opencv.objdetect.CascadeClassifier;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 
@@ -25,11 +35,14 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
     private ActivityMainBinding binding;
     private static final int REQUEST_CODE_PERMISSION = 100;
-    private static final int CAMERA_REQUEST = 1;
+    private static final int CAMERA_REQUEST = 101;
     private static final String[] PERMISSIONS = {
             Manifest.permission.CAMERA
     };
     private CameraBridgeViewBase mOpenCvCameraView;
+    private CascadeClassifier faceCascade;
+    private Mat mRgba;
+    private Mat mGray;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,6 +56,12 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         }else {
             if (OpenCVLoader.initDebug()) {
                 Toast.makeText(getApplicationContext(),"OpenCV Successfully initialized",Toast.LENGTH_SHORT).show();
+                faceCascade = new CascadeClassifier();
+                try {
+                    setFaceCascade();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
                 initCamera();
             } else {
                 Toast.makeText(this, "OpenCV initialization failed!", Toast.LENGTH_LONG).show();
@@ -50,10 +69,26 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
             }
         }
     }
+
+    private void setFaceCascade() throws IOException {
+        InputStream is = this.getResources().openRawResource(R.raw.frontal);
+        File cascadeDir = getDir("cascade", Context.MODE_PRIVATE);
+        File mCascade = new File(cascadeDir, "frontal.xml");
+        FileOutputStream os = new FileOutputStream(mCascade);
+        byte[] buffer = new byte[4096];
+        int bytesRead;
+        while((bytesRead = is.read(buffer))!= -1){
+            os.write(buffer, 0, bytesRead);
+        }
+        is.close();
+        os.close();
+        faceCascade = new CascadeClassifier(mCascade.getAbsolutePath());
+    }
     private void initCamera() {
         mOpenCvCameraView = binding.camView;
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
         mOpenCvCameraView.setCvCameraViewListener(this);
+        mOpenCvCameraView.setCameraIndex(Camera.CameraInfo.CAMERA_FACING_FRONT);
         mOpenCvCameraView.enableView();
     }
 
@@ -70,8 +105,26 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-        return inputFrame.rgba();
+        mRgba = inputFrame.rgba();
+        mGray = inputFrame.gray();
+
+        // Perform face detection
+        MatOfRect faces = new MatOfRect();
+        faceCascade.detectMultiScale(mGray, faces);
+
+        // Draw bounding boxes around detected faces with increased size
+        for (Rect rect : faces.toArray()) {
+            int increaseSize = 20;
+            Rect enlargedRect = new Rect((int) (rect.tl().x - increaseSize),
+                    (int) (rect.tl().y - increaseSize),
+                    rect.width + 2 * increaseSize,
+                    rect.height + 2 * increaseSize);
+            Imgproc.rectangle(mRgba, enlargedRect.tl(), enlargedRect.br(), new Scalar(255, 0, 0), 3);
+        }
+
+        return mRgba;
     }
+
 
     @Override
     public void onPause()
