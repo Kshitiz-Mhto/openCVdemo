@@ -1,10 +1,13 @@
 package com.sarvanam.opencvdemo;
 
+import static java.security.AccessController.getContext;
+
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.Manifest;
@@ -12,11 +15,16 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
+
+import com.sarvanam.opencvdemo.data.AttendenceDatabase;
+import com.sarvanam.opencvdemo.data.dao.FaceImageDao;
+import com.sarvanam.opencvdemo.data.modal.FaceImage;
 import com.sarvanam.opencvdemo.databinding.ActivityMainBinding;
 
 import org.opencv.android.CameraActivity;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Rect;
@@ -24,6 +32,7 @@ import org.opencv.core.Scalar;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -31,6 +40,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends CameraActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
 
@@ -45,6 +56,9 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     private Mat mRgba;
     private Mat mGray;
     private int cameraMode;
+    AttendenceDatabase database;
+    FaceImageDao dao;
+    ExecutorService databaseExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +66,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(binding.getRoot());
+        initDatabaseRequirement();
         cameraMode = Camera.CameraInfo.CAMERA_FACING_BACK;
         if (!hasPermissions(PERMISSIONS)) {
             // Request permissions
@@ -101,6 +116,10 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         mOpenCvCameraView.enableView();
     }
 
+    private void initDatabaseRequirement(){
+        database = AttendenceDatabase.getDatabase(getApplicationContext());
+        dao = database.faceImageDao();
+    }
     @Override
     protected List<? extends CameraBridgeViewBase> getCameraViewList() {
         return Collections.singletonList(mOpenCvCameraView);
@@ -120,6 +139,23 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         // Perform face detection
         MatOfRect faces = new MatOfRect();
         faceCascade.detectMultiScale(mGray, faces);
+
+        // If only one face is detected, capture and save the image
+        if (faces.toArray().length == 1) {
+            // Capture the image
+            Bitmap bitmap = Bitmap.createBitmap(mRgba.cols(), mRgba.rows(), Bitmap.Config.ARGB_8888);
+            Utils.matToBitmap(mRgba, bitmap);
+
+            // Convert bitmap to byte array
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            byte[] imageData = stream.toByteArray();
+
+            // Save the image to Room database
+            FaceImage faceImage = new FaceImage();
+            faceImage.imageData = imageData;
+            databaseExecutor.execute(() -> dao.insert(faceImage));
+        }
 
         // Get the orientation of the camera frame
         int orientation = inputFrame.rgba().rows() > inputFrame.rgba().cols() ? 90 : 0;
