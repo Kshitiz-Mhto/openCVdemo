@@ -20,8 +20,15 @@
         <org.opencv.android.JavaCameraView
             android:id="@+id/camView"
             android:layout_width="fill_parent"
-            android:layout_height="fill_parent"
+            android:layout_height="500dp"
             opencv:camera_id="any"
             opencv:show_fps="true" />
+        <Button
+            android:id="@+id/btnSwitchCamera"
+            android:layout_below="@+id/camView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:text="Switch"/>
     </RelativeLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
