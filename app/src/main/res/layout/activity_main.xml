@@ -23,12 +23,26 @@
             android:layout_height="500dp"
             opencv:camera_id="any"
             opencv:show_fps="true" />
-        <Button
-            android:id="@+id/btnSwitchCamera"
-            android:layout_below="@+id/camView"
-            android:layout_width="wrap_content"
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_centerInParent="true"
-            android:text="Switch"/>
+            android:layout_below="@+id/camView">
+            <Button
+                android:id="@+id/btnSwitchCamera"
+                android:layout_below="@+id/camView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Switch"/>
+            <Button
+                android:id="@+id/btnCaptureImage"
+                android:layout_below="@+id/camView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Click Pic"/>
+        </LinearLayout>
     </RelativeLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

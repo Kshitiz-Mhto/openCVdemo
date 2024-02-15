@@ -49,7 +49,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     private ActivityMainBinding binding;
     private static final int REQUEST_CODE_PERMISSION = 100;
     private static final int CAMERA_REQUEST = 101;
-    private static final double SIMILARITY_THRESHOLD = 0.7;
+    private static final double SIMILARITY_THRESHOLD = 0.9;
     private static final String[] PERMISSIONS = {
             Manifest.permission.CAMERA
     };
@@ -155,9 +155,16 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
             // Save the image to Room database
             FaceImage faceImage = new FaceImage();
             faceImage.imageData = imageData;
+
+            binding.btnCaptureImage.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    databaseExecutor.execute(() -> {
+                        dao.insert(faceImage);
+                    });
+                }
+            });
             databaseExecutor.execute(() -> {
-                dao.insert(faceImage);
-                // After inserting the image, attempt to recognize the face
                 recognizeFace(imageData);
             });
         }
