@@ -1,13 +1,12 @@
 package com.sarvanam.opencvdemo;
 
-import static java.security.AccessController.getContext;
-
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.Manifest;
@@ -26,15 +25,17 @@ import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfFloat;
 import org.opencv.core.MatOfRect;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
+import org.opencv.objdetect.HOGDescriptor;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -48,6 +49,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     private ActivityMainBinding binding;
     private static final int REQUEST_CODE_PERMISSION = 100;
     private static final int CAMERA_REQUEST = 101;
+    private static final double SIMILARITY_THRESHOLD = 0.7;
     private static final String[] PERMISSIONS = {
             Manifest.permission.CAMERA
     };
@@ -130,7 +132,6 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
     @Override
     public void onCameraViewStopped() {}
-
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         mRgba = inputFrame.rgba();
@@ -154,7 +155,11 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
             // Save the image to Room database
             FaceImage faceImage = new FaceImage();
             faceImage.imageData = imageData;
-            databaseExecutor.execute(() -> dao.insert(faceImage));
+            databaseExecutor.execute(() -> {
+                dao.insert(faceImage);
+                // After inserting the image, attempt to recognize the face
+                recognizeFace(imageData);
+            });
         }
 
         // Get the orientation of the camera frame
@@ -183,6 +188,86 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
         return mRgba;
     }
+    public void recognizeFace(byte[] capturedImageData) {
+        // Retrieve all faces from the database
+        List<FaceImage> faceImages = dao.getAllFaceImages();
+
+        // Convert captured image data to a Bitmap
+        Bitmap capturedBitmap = BitmapFactory.decodeByteArray(capturedImageData, 0, capturedImageData.length);
+
+        // Convert the Bitmap to a Mat for processing
+        Mat capturedMat = new Mat();
+        Utils.bitmapToMat(capturedBitmap, capturedMat);
+
+        // Perform face detection on the captured image
+        MatOfRect capturedFaces = new MatOfRect();
+        faceCascade.detectMultiScale(capturedMat, capturedFaces);
+
+        // If a face is detected in the captured image
+        if (capturedFaces.toArray().length > 0) {
+            // Loop through all faces in the database for comparison
+            for (FaceImage faceImage : faceImages) {
+                // Convert the byte array from the database to a Bitmap
+                Bitmap dbBitmap = BitmapFactory.decodeByteArray(faceImage.imageData, 0, faceImage.imageData.length);
+
+                // Convert the Bitmap to a Mat for processing
+                Mat dbMat = new Mat();
+                Utils.bitmapToMat(dbBitmap, dbMat);
+
+                // Perform face detection on the database image
+                MatOfRect dbFaces = new MatOfRect();
+                faceCascade.detectMultiScale(dbMat, dbFaces);
+
+                // Compare the detected faces in the captured image with the faces in the database
+                for (Rect capturedRect : capturedFaces.toArray()) {
+                    for (Rect dbRect : dbFaces.toArray()) {
+                        // Perform some comparison method here, e.g., comparing distances or using a recognition algorithm
+                        double similarityScore = calculateSimilarity(capturedMat, capturedRect, dbMat, dbRect);
+
+                        // If the similarity score is above a certain threshold, consider it a match
+                        if (similarityScore > SIMILARITY_THRESHOLD) {
+                            System.out.println("FaceRecognitionFacerecognized!");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("FaceRecognitionNomatchfound.");
+    }
+
+    private double calculateSimilarity(Mat capturedMat, Rect capturedRect, Mat dbMat, Rect dbRect) {
+        // Extract the region of interest (ROI) for the captured face
+        Mat capturedFace = new Mat(capturedMat, capturedRect);
+
+        // Extract the region of interest (ROI) for the database face
+        Mat dbFace = new Mat(dbMat, dbRect);
+
+        // Convert the faces to grayscale
+        Imgproc.cvtColor(capturedFace, capturedFace, Imgproc.COLOR_RGBA2GRAY);
+        Imgproc.cvtColor(dbFace, dbFace, Imgproc.COLOR_RGBA2GRAY);
+
+        // Resize the faces to a fixed size
+        Size size = new Size(128, 128);
+        Imgproc.resize(capturedFace, capturedFace, size);
+        Imgproc.resize(dbFace, dbFace, size);
+
+        // Compute HOG descriptors for the faces
+        MatOfFloat capturedDescriptors = new MatOfFloat();
+        MatOfFloat dbDescriptors = new MatOfFloat();
+        HOGDescriptor hog = new HOGDescriptor();
+        hog.compute(capturedFace, capturedDescriptors);
+        hog.compute(dbFace, dbDescriptors);
+
+        // Perform SVM classification (or other classification method) using the HOG descriptors
+        // Here you would use a trained SVM model or other classifier to classify the faces and return a similarity score
+        // For simplicity, let's assume a dummy similarity score for demonstration purposes
+        double similarityScore = 0.75; // Dummy score
+
+        return similarityScore;
+    }
+
+
 
     public void switchCamera() {
         cameraMode = (cameraMode + 1) % 2; // toggle between 0 and 1
