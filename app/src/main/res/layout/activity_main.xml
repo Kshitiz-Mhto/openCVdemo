@@ -20,7 +20,7 @@
         <org.opencv.android.JavaCameraView
             android:id="@+id/camView"
             android:layout_width="fill_parent"
-            android:layout_height="500dp"
+            android:layout_height="550dp"
             opencv:camera_id="any"
             opencv:show_fps="true" />
 
@@ -43,6 +43,13 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Click Pic"/>
+            <Button
+                android:id="@+id/btnImgFromGallery"
+                android:layout_below="@+id/camView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Gallery"/>
         </LinearLayout>
     </RelativeLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

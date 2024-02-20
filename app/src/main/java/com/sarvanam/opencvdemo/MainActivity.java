@@ -1,15 +1,21 @@
 package com.sarvanam.opencvdemo;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.hardware.Camera;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.Manifest;
+import android.provider.MediaStore;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
@@ -44,14 +50,16 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+@RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
 public class MainActivity extends CameraActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
 
     private ActivityMainBinding binding;
     private static final int REQUEST_CODE_PERMISSION = 100;
-    private static final int CAMERA_REQUEST = 101;
     private static final double SIMILARITY_THRESHOLD = 0.9;
+    private static final int OPEN_REQUEST_CODE = 101;
     private static final String[] PERMISSIONS = {
-            Manifest.permission.CAMERA
+            Manifest.permission.CAMERA,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
     };
     private CameraBridgeViewBase mOpenCvCameraView;
     private CascadeClassifier faceCascade;
@@ -60,6 +68,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     private int cameraMode;
     AttendenceDatabase database;
     FaceImageDao dao;
+    Uri selectedImageUri;
     ExecutorService databaseExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -93,6 +102,12 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
                 Toast.makeText(this, "OpenCV initialization failed!", Toast.LENGTH_LONG).show();
                 return;
             }
+            binding.btnImgFromGallery.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    enterMyFileManager();
+                }
+            });
         }
     }
 
@@ -121,6 +136,41 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     private void initDatabaseRequirement(){
         database = AttendenceDatabase.getDatabase(getApplicationContext());
         dao = database.faceImageDao();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        switch (requestCode) {
+            case OPEN_REQUEST_CODE:
+                if(resultCode == Activity.RESULT_OK){
+                    selectedImageUri = data.getData();
+                    // Convert selected image URI to bitmap
+                    Bitmap selectedBitmap;
+                    try {
+                        selectedBitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), selectedImageUri);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        return;
+                    }
+                    // Convert bitmap to byte array
+                    ByteArrayOutputStream stream = new ByteArrayOutputStream();
+                    selectedBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+                    byte[] imageData = stream.toByteArray();
+
+                    // Save the image to Room database
+                    FaceImage faceImage = new FaceImage();
+                    faceImage.imageData = imageData;
+                    databaseExecutor.execute(() -> dao.insert(faceImage));
+                    Toast.makeText(this, "Image Saved", Toast.LENGTH_SHORT).show();
+                }else {
+                    Toast.makeText(this, "File action canceled", Toast.LENGTH_SHORT).show();
+                }
+                break;
+            default:
+                super.onActivityResult(requestCode, resultCode, data);
+                break;
+        }
     }
     @Override
     protected List<? extends CameraBridgeViewBase> getCameraViewList() {
@@ -267,14 +317,17 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         hog.compute(dbFace, dbDescriptors);
 
         // Perform SVM classification (or other classification method) using the HOG descriptors
-        // Here you would use a trained SVM model or other classifier to classify the faces and return a similarity score
-        // For simplicity, let's assume a dummy similarity score for demonstration purposes
         double similarityScore = 0.75; // Dummy score
 
         return similarityScore;
     }
 
-
+    private void enterMyFileManager(){
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("image/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResult(intent, OPEN_REQUEST_CODE);
+    }
 
     public void switchCamera() {
         cameraMode = (cameraMode + 1) % 2; // toggle between 0 and 1
